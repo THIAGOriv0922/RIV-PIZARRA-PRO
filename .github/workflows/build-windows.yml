@@ -1,0 +1,88 @@
+name: Compilar RIV Pizarra Windows
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - RIV_PIZARRA_PRO_0.4_Parche_OpenBoard.zip
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obtener código original y aplicar cambios RIV
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!(Test-Path 'RIV_PIZARRA_PRO_0.4_Parche_OpenBoard.zip')) { throw 'Sube primero el ZIP del parche RIV a la raíz del repositorio.' }
+          git clone --depth 1 --branch v1.7.7 https://github.com/OpenBoard-org/OpenBoard.git OpenBoard
+          if ($LASTEXITCODE) { throw 'No se pudo obtener OpenBoard' }
+          git clone --depth 1 https://github.com/OpenBoard-org/OpenBoard-ThirdParty.git OpenBoard-ThirdParty
+          if ($LASTEXITCODE) { throw 'No se pudo obtener dependencias' }
+          Expand-Archive RIV_PIZARRA_PRO_0.4_Parche_OpenBoard.zip -DestinationPath parche
+          python parche/aplicar.py OpenBoard
+          if ($LASTEXITCODE) { throw 'No se pudo aplicar el parche' }
+          $pro = 'OpenBoard/OpenBoard.pro'
+          $text = Get-Content $pro -Raw
+          $text = $text.Replace('QMAKE_CXXFLAGS_RELEASE += /Od /Zi', 'QMAKE_CXXFLAGS_RELEASE += /O2')
+          [IO.File]::WriteAllText((Resolve-Path $pro), $text)
+          git -C OpenBoard rev-parse HEAD | Out-File upstream-revisions.txt
+          git -C OpenBoard-ThirdParty rev-parse HEAD | Out-File upstream-revisions.txt -Append
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          modules: 'qtwebengine qtwebchannel qtpositioning qtmultimedia qt5compat'
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compilar QuaZip
+        working-directory: OpenBoard-ThirdParty/quazip
+        shell: cmd
+        run: |
+          qmake quazip.pro "CONFIG+=release" "CONFIG-=debug_and_release" || exit /b 1
+          nmake || exit /b 1
+      - name: Compilar RIV
+        working-directory: OpenBoard
+        shell: cmd
+        run: |
+          qmake OpenBoard.pro "CONFIG+=release" "CONFIG-=debug_and_release" || exit /b 1
+          nmake || exit /b 1
+          nmake install || exit /b 1
+      - name: Empaquetar programa portable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $product = Resolve-Path OpenBoard/build/win32/release/product
+          $exe = Join-Path $product 'OpenBoard.exe'
+          if (!(Test-Path $exe)) { throw 'No se produjo el ejecutable' }
+          windeployqt --release --compiler-runtime $exe
+          if ($LASTEXITCODE) { throw 'windeployqt falló' }
+          foreach ($dir in @('poppler/bin','openssl/openssl-3.0.15-win64/bin','zlib/1.2.11/bin')) {
+            Copy-Item "OpenBoard-ThirdParty/$dir/*.dll" $product -Force
+          }
+          Rename-Item $exe 'RIV_PIZARRA_PRO.exe'
+          Copy-Item upstream-revisions.txt $product
+          $source = Join-Path $env:RUNNER_TEMP 'RIV-fuente'
+          New-Item -ItemType Directory -Path $source | Out-Null
+          robocopy OpenBoard "$source/OpenBoard" /E /XD .git build /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+          if ($LASTEXITCODE -ge 8) { throw 'Error copiando fuente' }
+          Copy-Item upstream-revisions.txt $source
+          Copy-Item RIV_PIZARRA_PRO_0.4_Parche_OpenBoard.zip $source
+          Copy-Item .github/workflows/build-windows.yml $source
+          Get-ChildItem OpenBoard -File | Where-Object Name -Match 'LICENSE|COPYING|COPYRIGHT' | Copy-Item -Destination $product
+          Compress-Archive -Path "$product/*" -DestinationPath RIV_PIZARRA_PRO_Windows_x64.zip
+          Compress-Archive -Path "$source/*" -DestinationPath RIV_PIZARRA_PRO_Fuente.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RIV-PIZARRA-PRO-Windows-x64
+          path: RIV_PIZARRA_PRO_Windows_x64.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RIV-PIZARRA-PRO-Fuente
+          path: RIV_PIZARRA_PRO_Fuente.zip
+          if-no-files-found: error
