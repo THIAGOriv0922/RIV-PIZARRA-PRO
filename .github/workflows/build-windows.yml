@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - RIV_PIZARRA_PRO_0.4_Parche_OpenBoard.zip
+      - .github/workflows/build-windows.yml
 permissions:
   contents: read
 jobs:
@@ -34,7 +35,7 @@ jobs:
         with:
           version: '6.8.3'
           arch: win64_msvc2022_64
-          modules: 'qtwebengine qtwebchannel qtpositioning qtmultimedia qt5compat'
+          modules: 'qtwebengine qtwebchannel qtpositioning qtmultimedia qt5compat qtserialport'
           cache: true
       - uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -69,13 +70,21 @@ jobs:
           $source = Join-Path $env:RUNNER_TEMP 'RIV-fuente'
           New-Item -ItemType Directory -Path $source | Out-Null
           robocopy OpenBoard "$source/OpenBoard" /E /XD .git build /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
-          if ($LASTEXITCODE -ge 8) { throw 'Error copiando fuente' }
+          $copyCode = $LASTEXITCODE
+          if ($copyCode -ge 8) { throw "Error copiando fuente (robocopy: $copyCode)" }
+          Write-Host "Robocopy completado correctamente: $copyCode"
+          $global:LASTEXITCODE = 0
           Copy-Item upstream-revisions.txt $source
           Copy-Item RIV_PIZARRA_PRO_0.4_Parche_OpenBoard.zip $source
           Copy-Item .github/workflows/build-windows.yml $source
           Get-ChildItem OpenBoard -File | Where-Object Name -Match 'LICENSE|COPYING|COPYRIGHT' | Copy-Item -Destination $product
           Compress-Archive -Path "$product/*" -DestinationPath RIV_PIZARRA_PRO_Windows_x64.zip
           Compress-Archive -Path "$source/*" -DestinationPath RIV_PIZARRA_PRO_Fuente.zip
+          foreach ($zip in @('RIV_PIZARRA_PRO_Windows_x64.zip','RIV_PIZARRA_PRO_Fuente.zip')) {
+            if (!(Test-Path $zip) -or (Get-Item $zip).Length -le 0) { throw "Archivo ZIP no generado: $zip" }
+            Write-Host "$zip : $((Get-Item $zip).Length) bytes"
+          }
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: RIV-PIZARRA-PRO-Windows-x64
