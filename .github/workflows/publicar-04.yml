@@ -1,0 +1,26 @@
+name: Publicar RIV Pizarra 0.4
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/publicar-04.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar compilación y fuente ya verificados
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 45870961930 --repo "$GITHUB_REPOSITORY" --name RIV-PIZARRA-PRO-Windows-x64 --dir dist
+          gh run download 45870961930 --repo "$GITHUB_REPOSITORY" --name RIV-PIZARRA-PRO-Fuente --dir dist
+          unzip -tq dist/RIV_PIZARRA_PRO_Windows_x64.zip
+          unzip -tq dist/RIV_PIZARRA_PRO_Fuente.zip
+      - name: Publicar descarga directa
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.4 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "RIV PIZARRA PRO 0.4" --notes "Versión de prueba para Windows x64 basada en OpenBoard 1.7.7 (GPL-3.0). Compilada en GitHub Actions; ejecución en PC pendiente de prueba. Incluye código fuente modificado." dist/RIV_PIZARRA_PRO_Windows_x64.zip dist/RIV_PIZARRA_PRO_Fuente.zip
