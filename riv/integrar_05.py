@@ -48,7 +48,6 @@ s=s[:start]+'''    }
 };
 }
 '''
-s=s.replace('auto* drag = new QDrag(this);\n        drag->setMimeData(mime);\n        drag->setPixmap(currentItem()->icon().pixmap(68,58));\n        drag->exec(Qt::CopyAction);','QDrag drag(this);\n        drag.setMimeData(mime);\n        drag.setPixmap(currentItem()->icon().pixmap(68,58));\n        drag.exec(Qt::CopyAction);')
 p.write_text(s,encoding='utf-8')
 
 app='src/core/UBApplication.cpp'
